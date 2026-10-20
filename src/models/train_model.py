@@ -7,9 +7,13 @@ from pathlib import Path
 
 import mlflow
 import mlflow.sklearn
+from mlflow.tracking import MlflowClient
 
-
-def train():
+"""
+Trains a Random Forest model on the student placement dataset.
+Accepts param for multi-run comparison.
+"""
+def train(n_estimators: int = 100, random_state: int = 42):
     project_root = Path(__file__).resolve().parents[2]
 
     # Load dataset
@@ -31,10 +35,7 @@ def train():
     # Start MLflow experiment
     mlflow.set_experiment("Student Placement Prediction")
 
-    with mlflow.start_run():
-        n_estimators = 100
-        random_state = 42
-
+    with mlflow.start_run(run_name=f"RF_n{n_estimators}_seed{random_state}"):
         # Train model
         model = RandomForestClassifier(
             n_estimators=n_estimators,
@@ -55,9 +56,9 @@ def train():
         mlflow.log_metric("accuracy", accuracy)
 
         # Save model locally
-        models_dir = project_root / "models"
-        models_dir.mkdir(parents=True, exist_ok=True)
-        joblib.dump(model, models_dir / "model.pkl")
+        # models_dir = project_root / "models"
+        # models_dir.mkdir(parents=True, exist_ok=True)
+        # joblib.dump(model, models_dir / "model.pkl")
 
         # Log model artifact in MLflow
         mlflow.sklearn.log_model(
@@ -68,4 +69,28 @@ def train():
 
 
 if __name__ == "__main__":
-    train() 
+    project_root = Path(__file__).resolve().parents[2]
+    print(f"Project root: {project_root}")
+    train(n_estimators=100, random_state=42)
+    train(n_estimators=200, random_state=42)
+    train(n_estimators=150, random_state=0)
+
+    # find best run by highest accuracy across all runs in the experiment
+    client = MlflowClient()
+    experiment = client.get_experiment_by_name("Student Placement Prediction")
+    best_run = client.search_runs(
+        experiment_ids=[experiment.experiment_id],
+        order_by=["metrics.accuracy DESC"],
+        max_results=1
+    )[0]
+
+    print(f"\nBest run: {best_run.info.run_name} | Accuracy: {best_run.data.metrics['accuracy']:.4f}")
+
+    # save model locally - only the best run's model is saved
+    models_dir = project_root / "models"
+    models_dir.mkdir(parents=True, exist_ok=True)
+    best_model_uri = f"runs:/{best_run.info.run_id}/model"
+    best_model = mlflow.sklearn.load_model(best_model_uri)
+    
+    joblib.dump(best_model, models_dir / "model.pkl")
+    print(f"Best model saved to {models_dir}")

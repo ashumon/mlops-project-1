@@ -6,7 +6,9 @@ click
 Sphinx
 coverage
 flake8
+fastapi
 python-dotenv>=0.5.1
 pandas
 scikit-learn
 mlflow
+uvicorn
